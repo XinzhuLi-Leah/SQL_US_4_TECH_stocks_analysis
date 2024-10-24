@@ -18,18 +18,8 @@ select
     name,
     date,
     closing_price,
-    avg(closing_price) over (partition by name order by date rows 9 preceding) as moving_10_avg
-    -- avg(closing_price) over (partition by name order by date rows between 9 preceding and current row) as moving_10_avg1
-from
-    stock_data
-order by name, date;
-
-select 
-    name,
-    date,
-    closing_price,
-    avg(closing_price) over (partition by name order by date rows 49 preceding) as moving_50_avg
-    -- avg(closing_price) over (partition by name order by date rows between 49 preceding and current row) as moving_50_avg1
+    avg(closing_price) over (partition by name order by date rows 9 preceding) as moving_10_avg,
+    avg(closing_price) over (partition by name order by date rows 49 preceding ) as moving_50_avg
 from
     stock_data
 order by name, date;
@@ -49,15 +39,32 @@ SELECT
 FROM stock_data;
 
 
--- 3. high and low
-SELECT
-   name,
-    MAX(closing_price) AS oneyear_high,
-    MIN(closing_price) AS oneyear_low
-FROM
-    stock_data
-GROUP BY
-    name;
+-- 3. high and low using join
+SELECT 
+    a.name,
+    a.date,
+    CASE 
+        WHEN a.closing_price = b.oneyear_high THEN b.oneyear_high
+        ELSE NULL
+    END AS highest_price,
+    CASE 
+        WHEN a.closing_price = b.oneyear_low THEN b.oneyear_low
+        ELSE NULL
+    END AS lowest_price
+FROM stock_data AS a
+JOIN 
+(
+    SELECT
+       name,
+       MAX(closing_price) AS oneyear_high,
+       MIN(closing_price) AS oneyear_low
+    FROM
+        stock_data
+    GROUP BY
+        name
+) AS b
+ON a.name = b.name 
+   AND (a.closing_price = b.oneyear_high OR a.closing_price = b.oneyear_low);
     
     
     
@@ -68,7 +75,6 @@ with tmp1 as
 SELECT
     name,
     date,
-    closing_price,
     LAG(closing_price, 1) OVER (PARTITION BY name ORDER BY date) AS prev_closing_price,
     highest_price,
     lowest_price
@@ -92,7 +98,7 @@ select
             else 'NA' 
             end as Note
 from tmp2
-order by Note desc;
+order by Note desc,name,date;
 
 
 
@@ -267,10 +273,16 @@ WITH returns AS (
         name,
 	    closing_price - LAG(closing_price) OVER (PARTITION BY name ORDER BY date) AS daily_return
     FROM stock_data
-)
+),
+RSI as
+(
 SELECT 
     name,
     100 - (100 / (1 + AVG(CASE WHEN daily_return > 0 THEN daily_return ELSE 0 END) / 
                       AVG(CASE WHEN daily_return < 0 THEN -daily_return ELSE 0 END))) AS rsi
 FROM returns
-GROUP BY name;
+GROUP BY name
+)
+select
+*, case when rsi between 30 and 70 then ' neutral' else null end as mark
+from RSI
